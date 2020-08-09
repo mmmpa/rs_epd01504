@@ -45,19 +45,19 @@ impl Default for DeepSleep {
 }
 
 pub(crate) mod display_update {
-    pub const ENABLE_CLOCK_SIGNAL: u8 = 0x80;
-    pub const ENABLE_CLOCK_SIGNAL_ENABLE_CP: u8 = 0xC0; // demo uses 0c11000000
+    pub const ENABLE_CLOCK_SIGNAL: u8 = 0b1000_0000; // 0x80
+    pub const ENABLE_CLOCK_SIGNAL_ENABLE_CP: u8 = 0b1100_0000; // demo uses 0c11000000
 
-    pub const TO_INITIAL_DISPLAY: u8 = 0x08;
-    pub const TO_PATTERN_DISPLAY: u8 = 0x04;
-    // demo uses 0c00000100
+    pub const TO_INITIAL_DISPLAY: u8 = 0b0000_1000; // 0x08
+    pub const TO_PATTERN_DISPLAY: u8 = 0b0000_0100; // 0x04
+                                                    // demo uses 0c00000100
     pub const TO_BOTH_DISPLAY: u8 = TO_INITIAL_DISPLAY | TO_PATTERN_DISPLAY;
 
-    pub const DISABLE_CP_DISABLE_CLOCK_SIGNAL: u8 = 0x03;
-    // demo uses 0c00000011
-    pub const DISABLE_CLOCK_SIGNAL: u8 = 0x01;
+    pub const DISABLE_CP_DISABLE_CLOCK_SIGNAL: u8 = 0b0000_0011; // 0x03
+                                                                 // demo uses 0c00000011
+    pub const DISABLE_CLOCK_SIGNAL: u8 = 0b0000_0001; // 0x01
 
-    pub const DEMO_USES: u8 = 0xC7; // total demo uses
+    pub const DEMO_USES: u8 = 0b11000111; // 0xC7 total demo uses
 }
 
 const LUT_FULL_UPDATE: [u8; 30] = [
