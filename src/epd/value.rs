@@ -5,6 +5,7 @@ pub(crate) const RESET_TIME: u64 = 200;
 #[repr(u8)]
 #[derive(Copy, Clone, Debug)]
 pub enum Command {
+    // value is computed by canvas
     DriverOutputControl = 0x01,
     BoosterSoftStartControl = 0x0C,
     GateScanStartPosition = 0x0F,
@@ -85,16 +86,29 @@ impl AsRef<[u8]> for Lut {
 
 #[repr(u8)]
 #[derive(Copy, Clone, Debug)]
-pub enum DataEntryMode {
-    YdecXdec = 0x00,
-    YdecXinc = 0x01,
-    YincXdec = 0x02,
-    YincXinc = 0x03,
+pub enum DataEntryAddressDirection {
+    YdecXdec = 0b0_00,
+    YdecXinc = 0b0_01,
+    YincXdec = 0b0_10,
+    YincXinc = 0b0_11,
 }
 
-impl Default for DataEntryMode {
+impl Default for DataEntryAddressDirection {
     fn default() -> Self {
         Self::YincXinc
+    }
+}
+
+#[repr(u8)]
+#[derive(Copy, Clone, Debug)]
+pub enum DataEntryAddressCounterDirection {
+    X = 0b0_00,
+    Y = 0b1_00,
+}
+
+impl Default for DataEntryAddressCounterDirection {
+    fn default() -> Self {
+        Self::X
     }
 }
 
