@@ -1,0 +1,20 @@
+[package]
+name = "epd01504_27"
+version = "0.1.0"
+authors = ["mmmpa <mmmpa.mmmpa@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+async-trait = "0.1.31"
+tokio = { version = "0.2", features = ["process", "sync", "macros", "time", "fs"] }
+futures = "0.3.5"
+log = "0.4.11"
+nix = "0.17.0"
+pretty_env_logger = "0.4"
+itertools = "0.9.0"
+spidev = "0.4.0"
+
+poor_gpio = { git = "https://github.com/mmmpa/poor_gpio" }
+eight_px_uint_eight = { git = "https://github.com/mmmpa/eight_px_uint_eight", features = ["std"] }
