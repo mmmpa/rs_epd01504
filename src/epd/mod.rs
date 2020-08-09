@@ -210,7 +210,7 @@ pub trait EpdSpiWrapper: Send + Sync + 'static {
         self.set_dummy_line_period().await?;
         self.set_gate_time().await?;
         self.set_data_entry_mode().await?;
-        self.set_full_update_lut().await?;
+        self.set_lut(Lut::FullUpdate).await?;
 
         Ok(())
     }
@@ -276,16 +276,9 @@ pub trait EpdSpiWrapper: Send + Sync + 'static {
         .await
     }
 
-    async fn set_full_update_lut(&self) -> EpdResult<()> {
+    async fn set_lut(&self, lut: Lut) -> EpdResult<()> {
         debug!("set_full_update_lut");
-        self.send(Command::WriteLutRegister, &lut::FULL_UPDATE)
-            .await
-    }
-
-    async fn set_partial_update_lut(&self) -> EpdResult<()> {
-        debug!("set_partial_update_lut");
-        self.send(Command::WriteLutRegister, &lut::PARTIAL_UPDATE)
-            .await
+        self.send(Command::WriteLutRegister, lut.as_ref()).await
     }
 
     async fn fill(&self, color: EpdColor) -> EpdResult<()> {
@@ -392,9 +385,8 @@ pub trait EpdSpiWrapper: Send + Sync + 'static {
         Ok(())
     }
 
-    async fn sleep(&self) -> EpdResult<()> {
-        self.send(Command::DeepSleepMode, &[deep_sleep::NORMAL])
-            .await
+    async fn sleep(&self, mode: DeepSleep) -> EpdResult<()> {
+        self.send(Command::DeepSleepMode, &[mode as u8]).await
     }
 }
 
@@ -427,7 +419,7 @@ pub trait Epd: Send + Sync + 'static {
         self.fill(EpdColor::White).await
     }
 
-    async fn sleep(&self) -> EpdResult<()> {
-        self.spi().sleep().await
+    async fn sleep(&self, mode: DeepSleep) -> EpdResult<()> {
+        self.spi().sleep(mode).await
     }
 }
