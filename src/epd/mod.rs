@@ -31,20 +31,12 @@ impl From<u8> for Color {
     }
 }
 
-pub trait Image: Send + Sync {
-    fn for_fill(w: usize, h: usize, color: Color) -> Self
-    where
-        Self: Sized;
-    fn rect(&self) -> &EightSizedRectangle;
-    fn as_vec(&self) -> &[u8];
-}
-
 #[derive(Debug, Default, Copy, Clone, Eq, PartialEq)]
 pub struct EightSizedRectangle {
-    pub x: u16,
-    pub y: u16,
-    pub width: u16,
-    pub height: u16,
+    x: u16,
+    y: u16,
+    width: u16,
+    height: u16,
 }
 
 impl EightSizedRectangle {
@@ -124,7 +116,6 @@ pub trait EpdCommand: Send + Sync {
     type Spi: Spi<
         GpioWriter = Self::GpioWriter, //
     >;
-    type EpdImage: Image;
 
     fn chip_select_pin(&self) -> &Self::GpioWriter;
     fn reset_pin(&self) -> &Self::GpioWriter;
@@ -249,7 +240,7 @@ pub trait EpdCommand: Send + Sync {
         debug!("set_data_entry_mode");
         self.send(
             Command::DataEntryModeSetting,
-            &vec![counter as u8 & mode as u8],
+            &vec![counter as u8 | mode as u8],
         )
         .await
     }
@@ -260,8 +251,17 @@ pub trait EpdCommand: Send + Sync {
     }
 
     async fn fill(&self, color: Color, params: DisplayUpdateControlParams) -> EpdResult<()> {
+        let hex = match color {
+            Color::Black => 0xFF,
+            Color::White => 0x00,
+        };
+
+        let w = self.canvas_width() >> 3;
+        let h = self.canvas_height();
+
         self.draw(
-            Self::EpdImage::for_fill(self.canvas_width(), self.canvas_width(), color),
+            &EightSizedRectangle::new(0, 0, w as u16, h as u16),
+            &vec![hex; w * h],
             params,
         )
         .await
@@ -269,31 +269,32 @@ pub trait EpdCommand: Send + Sync {
 
     async fn draw(
         &self,
-        image: Self::EpdImage,
+        rect: &EightSizedRectangle,
+        data: &[u8],
         params: DisplayUpdateControlParams,
     ) -> EpdResult<()> {
-        self.upload_image(image).await?;
+        self.upload_image(rect, data).await?;
         self.refresh_display(params).await?;
 
         Ok(())
     }
 
-    async fn upload_image(&self, image: Self::EpdImage) -> EpdResult<()> {
-        self.set_ram_area(&image).await?;
-        self.set_ram_counter(&image).await?;
-        self.write_image_to_ram(image).await?;
+    async fn upload_image(&self, rect: &EightSizedRectangle, data: &[u8]) -> EpdResult<()> {
+        self.set_ram_area(&rect).await?;
+        self.set_ram_counter(&rect).await?;
+        self.write_image_to_ram(data).await?;
 
         Ok(())
     }
 
     // TODO: compute area from image
-    async fn set_ram_area(&self, image: &Self::EpdImage) -> EpdResult<()> {
+    async fn set_ram_area(&self, rect: &EightSizedRectangle) -> EpdResult<()> {
         let EightSizedRectangle {
             x,
             y,
             width,
             height,
-        } = *image.rect();
+        } = *rect;
 
         self.send(
             Command::SetRamXAddressStartEndPosition,
@@ -316,8 +317,8 @@ pub trait EpdCommand: Send + Sync {
         Ok((()))
     }
 
-    async fn set_ram_counter(&self, image: &Self::EpdImage) -> EpdResult<()> {
-        let EightSizedRectangle { x, y, .. } = *image.rect();
+    async fn set_ram_counter(&self, rect: &EightSizedRectangle) -> EpdResult<()> {
+        let EightSizedRectangle { x, y, .. } = *rect;
 
         self.send(Command::SetRamXAddressCounter, &[x as u8])
             .await?;
@@ -330,8 +331,8 @@ pub trait EpdCommand: Send + Sync {
         Ok((()))
     }
 
-    async fn write_image_to_ram(&self, image: Self::EpdImage) -> EpdResult<()> {
-        self.send(Command::WriteRam, image.as_vec()).await
+    async fn write_image_to_ram(&self, data: &[u8]) -> EpdResult<()> {
+        self.send(Command::WriteRam, data).await
     }
 
     async fn refresh_display(&self, params: DisplayUpdateControlParams) -> EpdResult<()> {
@@ -355,7 +356,7 @@ pub trait EpdCommand: Send + Sync {
 
         self.send(
             Command::DisplayUpdateControl2,
-            &[enabling as u8 & target_display as u8 & disabling as u8],
+            &[enabling as u8 | target_display as u8 | disabling as u8],
         )
         .await
     }
@@ -385,8 +386,7 @@ pub trait EpdCommand: Send + Sync {
 
 #[async_trait]
 pub trait Epd: Send + Sync {
-    type EpdCore: EpdCommand<EpdImage = Self::Image>;
-    type Image: Image;
+    type EpdCore: EpdCommand;
 
     fn core(&self) -> &Self::EpdCore;
 
@@ -398,8 +398,10 @@ pub trait Epd: Send + Sync {
         self.core().init().await
     }
 
-    async fn draw(&self, image: Self::Image) -> EpdResult<()> {
-        self.core().draw(image, self.display_update_control()).await
+    async fn draw(&self, rect: &EightSizedRectangle, data: &[u8]) -> EpdResult<()> {
+        self.core()
+            .draw(rect, data, self.display_update_control())
+            .await
     }
 
     async fn fill(&self, color: Color) -> EpdResult<()> {

@@ -1,5 +1,5 @@
 [package]
-name = "epd01504_27"
+name = "epd01504"
 version = "0.1.0"
 authors = ["mmmpa <mmmpa.mmmpa@gmail.com>"]
 edition = "2018"
@@ -17,4 +17,3 @@ itertools = "0.9.0"
 spidev = "0.4.0"
 
 poor_gpio = { git = "https://github.com/mmmpa/poor_gpio" }
-eight_px_uint_eight = { git = "https://github.com/mmmpa/eight_px_uint_eight", features = ["std"] }

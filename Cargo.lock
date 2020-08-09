@@ -62,11 +62,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4785bdd1c96b2a846b2bd7cc02e86b6b3dbf14e7e53446c4f54c92a361040822"
 
 [[package]]
-name = "eight_px_uint_eight"
-version = "0.2.0"
-source = "git+https://github.com/mmmpa/eight_px_uint_eight#bd5a377d6097ceb075870fe454095d5eeb6d07a1"
-
-[[package]]
 name = "either"
 version = "1.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -86,11 +81,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "epd01504_27"
+name = "epd01504"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "eight_px_uint_eight",
  "futures",
  "itertools",
  "log",

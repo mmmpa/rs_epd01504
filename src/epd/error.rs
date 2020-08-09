@@ -1,4 +1,3 @@
-use eight_px_uint_eight::EightPxUintEightError;
 use poor_gpio::GpioError;
 
 #[derive(Debug)]
@@ -7,7 +6,6 @@ pub enum EpdError {
     DataTooLong(usize, usize),
     GpioError(poor_gpio::GpioError),
     SpiIoError(std::io::Error),
-    EightPxUintEightError(EightPxUintEightError),
 }
 
 impl std::fmt::Display for EpdError {
@@ -27,11 +25,5 @@ impl From<poor_gpio::GpioError> for EpdError {
 impl From<std::io::Error> for EpdError {
     fn from(e: std::io::Error) -> Self {
         Self::SpiIoError(e)
-    }
-}
-
-impl From<EightPxUintEightError> for EpdError {
-    fn from(e: EightPxUintEightError) -> Self {
-        Self::EightPxUintEightError(e)
     }
 }
