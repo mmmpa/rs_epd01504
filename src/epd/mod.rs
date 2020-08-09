@@ -1,9 +1,7 @@
 mod error;
-mod mono8_image;
 mod value;
 
 pub use error::*;
-pub use mono8_image::*;
 pub use value::*;
 
 use crate::*;
@@ -17,13 +15,14 @@ pub type EpdResult<T> = Result<T, EpdError>;
 
 //pub struct Epd;
 
+#[repr(u8)]
 #[derive(Eq, PartialEq, Copy, Clone)]
-pub enum EpdColor {
-    Black,
-    White,
+pub enum Color {
+    Black = 1,
+    White = 0,
 }
 
-impl From<u8> for EpdColor {
+impl From<u8> for Color {
     fn from(n: u8) -> Self {
         match n {
             1 => Self::Black,
@@ -32,31 +31,12 @@ impl From<u8> for EpdColor {
     }
 }
 
-pub trait EpdImage: Send + Sync + 'static + Sized {
+pub trait Image: Send + Sync {
+    fn for_fill(w: usize, h: usize, color: Color) -> Self
+    where
+        Self: Sized;
     fn rect(&self) -> &EightSizedRectangle;
-    fn update(&mut self, rect: NormalRectangle, data: &[EpdColor]) -> EpdResult<()>;
     fn as_vec(&self) -> &[u8];
-    fn as_part_vec(&self, rect: NormalRectangle) -> (EightSizedRectangle, Vec<u8>);
-    fn data_for_fill(rect: NormalRectangle, color: EpdColor) -> EpdResult<Self>;
-}
-
-#[derive(Debug, Default, Copy, Clone, Eq, PartialEq)]
-pub struct NormalRectangle {
-    pub x: u16,
-    pub y: u16,
-    pub width: u16,
-    pub height: u16,
-}
-
-impl NormalRectangle {
-    pub fn new(x: u16, y: u16, width: u16, height: u16) -> Self {
-        Self {
-            x,
-            y,
-            width,
-            height,
-        }
-    }
 }
 
 #[derive(Debug, Default, Copy, Clone, Eq, PartialEq)]
@@ -78,35 +58,18 @@ impl EightSizedRectangle {
     }
 }
 
-impl From<NormalRectangle> for EightSizedRectangle {
-    fn from(rect: NormalRectangle) -> Self {
-        let NormalRectangle {
-            x,
-            y,
-            width,
-            height,
-        } = rect;
-
-        let width = match width >> 3 {
-            m if m == 0 => 1,
-            m if width % 8 == 0 => m,
-            m => m + 1,
-        };
-
-        Self {
-            x,
-            y,
-            width,
-            height,
-        }
-    }
+#[derive(Copy, Clone, Default)]
+pub struct DisplayUpdateControlParams {
+    pub enabling: DisplayUpdateEnablingStep,
+    pub target_display: DisplayUpdateTarget,
+    pub disabling: DisplayUpdateDisablingStep,
 }
 
 #[async_trait]
-pub trait RawSpiAccessor: Send + Sync + 'static {
-    type EpdGpioWriter: EpdGpioWriter;
+pub trait Spi: Send + Sync {
+    type GpioWriter: GpioWriter;
 
-    fn data_command_pin(&self) -> &Self::EpdGpioWriter;
+    fn data_command_pin(&self) -> &Self::GpioWriter;
     async fn send(&self, data: &[u8]) -> EpdResult<()>;
 
     async fn send_command(&self, command: u8) -> EpdResult<()> {
@@ -133,7 +96,7 @@ pub trait RawSpiAccessor: Send + Sync + 'static {
 }
 
 #[async_trait]
-pub trait EpdGpioWriter: Send + Sync + 'static {
+pub trait GpioWriter: Send + Sync {
     async fn write(&self, value: u8) -> EpdResult<()>;
     async fn high(&self) -> EpdResult<()> {
         self.write(1).await
@@ -144,7 +107,7 @@ pub trait EpdGpioWriter: Send + Sync + 'static {
 }
 
 #[async_trait]
-pub trait EpdGpioReader: Send + Sync + 'static {
+pub trait GpioReader: Send + Sync {
     async fn read(&self) -> EpdResult<u8>;
     async fn high(&self) -> EpdResult<bool> {
         Ok(!self.low().await?)
@@ -155,24 +118,24 @@ pub trait EpdGpioReader: Send + Sync + 'static {
 }
 
 #[async_trait]
-pub trait EpdSpiWrapper: Send + Sync + 'static {
-    type EpdGpioReader: EpdGpioReader;
-    type EpdGpioWriter: EpdGpioWriter;
-    type RawSpiAccessor: RawSpiAccessor<
-        EpdGpioWriter = Self::EpdGpioWriter, //
+pub trait EpdCommand: Send + Sync {
+    type GpioReader: GpioReader;
+    type GpioWriter: GpioWriter;
+    type Spi: Spi<
+        GpioWriter = Self::GpioWriter, //
     >;
-    type EpdImage: EpdImage;
+    type EpdImage: Image;
 
-    fn chip_select_pin(&self) -> &Self::EpdGpioWriter;
-    fn reset_pin(&self) -> &Self::EpdGpioWriter;
-    fn busy_pin(&self) -> &Self::EpdGpioReader;
-    fn spi(&self) -> &Self::RawSpiAccessor;
+    fn chip_select_pin(&self) -> &Self::GpioWriter;
+    fn reset_pin(&self) -> &Self::GpioWriter;
+    fn busy_pin(&self) -> &Self::GpioReader;
+    fn spi(&self) -> &Self::Spi;
 
-    fn canvas_width(&self) -> u16 {
+    fn canvas_width(&self) -> usize {
         200
     }
 
-    fn canvas_height(&self) -> u16 {
+    fn canvas_height(&self) -> usize {
         200
     }
 
@@ -249,26 +212,33 @@ pub trait EpdSpiWrapper: Send + Sync + 'static {
         debug!("set_booster_soft_start_control");
         self.send(
             Command::BoosterSoftStartControl,
-            &data::BOOSTER_SOFT_START_CONTROL,
+            &static_data::BOOSTER_SOFT_START_CONTROL,
         )
         .await
     }
 
     async fn write_vcom_register(&self) -> EpdResult<()> {
         debug!("write_vcom_register");
-        self.send(Command::WriteVcomRegister, &data::WRITE_VCOM_REGISTER)
-            .await
+        self.send(
+            Command::WriteVcomRegister,
+            &static_data::WRITE_VCOM_REGISTER,
+        )
+        .await
     }
 
     async fn set_dummy_line_period(&self) -> EpdResult<()> {
         debug!("set_dummy_line_period");
-        self.send(Command::SetDummyLinePeriod, &data::SET_DUMMY_LINE_PERIOD)
-            .await
+        self.send(
+            Command::SetDummyLinePeriod,
+            &static_data::SET_DUMMY_LINE_PERIOD,
+        )
+        .await
     }
 
     async fn set_gate_time(&self) -> EpdResult<()> {
         debug!("set_gate_time");
-        self.send(Command::SetGateTime, &data::SET_GATE_TIME).await
+        self.send(Command::SetGateTime, &static_data::SET_GATE_TIME)
+            .await
     }
 
     async fn set_data_entry_mode(
@@ -289,14 +259,21 @@ pub trait EpdSpiWrapper: Send + Sync + 'static {
         self.send(Command::WriteLutRegister, lut.as_ref()).await
     }
 
-    async fn fill(&self, color: EpdColor) -> EpdResult<()> {
-        let rect = NormalRectangle::new(0, 0, self.canvas_width(), self.canvas_height());
-        self.draw(Self::EpdImage::data_for_fill(rect, color)?).await
+    async fn fill(&self, color: Color, params: DisplayUpdateControlParams) -> EpdResult<()> {
+        self.draw(
+            Self::EpdImage::for_fill(self.canvas_width(), self.canvas_width(), color),
+            params,
+        )
+        .await
     }
 
-    async fn draw(&self, image: Self::EpdImage) -> EpdResult<()> {
+    async fn draw(
+        &self,
+        image: Self::EpdImage,
+        params: DisplayUpdateControlParams,
+    ) -> EpdResult<()> {
         self.upload_image(image).await?;
-        self.refresh_display().await?;
+        self.refresh_display(params).await?;
 
         Ok(())
     }
@@ -339,7 +316,6 @@ pub trait EpdSpiWrapper: Send + Sync + 'static {
         Ok((()))
     }
 
-    // TODO: compute start point from image
     async fn set_ram_counter(&self, image: &Self::EpdImage) -> EpdResult<()> {
         let EightSizedRectangle { x, y, .. } = *image.rect();
 
@@ -358,8 +334,8 @@ pub trait EpdSpiWrapper: Send + Sync + 'static {
         self.send(Command::WriteRam, image.as_vec()).await
     }
 
-    async fn refresh_display(&self) -> EpdResult<()> {
-        self.set_image_activation_option().await?;
+    async fn refresh_display(&self, params: DisplayUpdateControlParams) -> EpdResult<()> {
+        self.set_image_activation_option(params).await?;
         self.activate_uploaded_image().await?;
         self.inform_read_write_end().await?;
         self.wait_until_idle().await?;
@@ -367,10 +343,19 @@ pub trait EpdSpiWrapper: Send + Sync + 'static {
         Ok(())
     }
 
-    async fn set_image_activation_option(&self) -> EpdResult<()> {
+    async fn set_image_activation_option(
+        &self,
+        params: DisplayUpdateControlParams,
+    ) -> EpdResult<()> {
+        let DisplayUpdateControlParams {
+            enabling,
+            target_display,
+            disabling,
+        } = params;
+
         self.send(
             Command::DisplayUpdateControl2,
-            &data::DISPLAY_UPDATE_CONTROL_2,
+            &[enabling as u8 & target_display as u8 & disabling as u8],
         )
         .await
     }
@@ -399,35 +384,33 @@ pub trait EpdSpiWrapper: Send + Sync + 'static {
 }
 
 #[async_trait]
-pub trait Epd: Send + Sync + 'static {
-    type EpdGpioWriter: EpdGpioWriter;
-    type EpdGpioReader: EpdGpioReader;
-    type EpdWrappedSpi: EpdSpiWrapper<
-        EpdGpioReader = Self::EpdGpioReader, //
-        EpdGpioWriter = Self::EpdGpioWriter,
-        EpdImage = Self::EpdImager,
-    >;
-    type EpdImager: EpdImage;
+pub trait Epd: Send + Sync {
+    type EpdCore: EpdCommand<EpdImage = Self::Image>;
+    type Image: Image;
 
-    fn spi(&self) -> &Self::EpdWrappedSpi;
+    fn core(&self) -> &Self::EpdCore;
+
+    fn display_update_control(&self) -> DisplayUpdateControlParams {
+        DisplayUpdateControlParams::default()
+    }
 
     async fn init(&self) -> EpdResult<()> {
-        self.spi().init().await
+        self.core().init().await
     }
 
-    async fn draw(&self, image: Self::EpdImager) -> EpdResult<()> {
-        self.spi().draw(image).await
+    async fn draw(&self, image: Self::Image) -> EpdResult<()> {
+        self.core().draw(image, self.display_update_control()).await
     }
 
-    async fn fill(&self, color: EpdColor) -> EpdResult<()> {
-        self.spi().fill(color).await
+    async fn fill(&self, color: Color) -> EpdResult<()> {
+        self.core().fill(color, self.display_update_control()).await
     }
 
     async fn clear(&self) -> EpdResult<()> {
-        self.fill(EpdColor::White).await
+        self.fill(Color::White).await
     }
 
     async fn sleep(&self, mode: DeepSleep) -> EpdResult<()> {
-        self.spi().sleep(mode).await
+        self.core().sleep(mode).await
     }
 }

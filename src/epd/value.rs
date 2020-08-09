@@ -31,6 +31,36 @@ pub enum Command {
     NOP = 0xFF,
 }
 
+pub(crate) mod static_data {
+    // P21
+    // pub static ref BoosterSoftStartControl: Vec<u8> = vec![0xCF, 0xCE, 0x8D];
+    // from sample
+    pub const BOOSTER_SOFT_START_CONTROL: [u8; 3] = [0xD7, 0xD6, 0x9D];
+    pub const GATE_SCAN_START_POSITION: [u8; 1] = [0x01];
+
+    // P22
+    pub const TEMPERATURE_SENSOR_CONTROL: [u8; 2] = [0b01111111, 0b11110000];
+
+    // Demo doesn't use this command.
+    pub const DISPLAY_UPDATE_CONTROL_1: [u8; 0] = [];
+
+    // P23
+    pub const WRITE_VCOM_REGISTER: [u8; 1] = [0xA8]; // demo uses
+
+    // P24
+    pub const WRITE_LUT_REGISTER: [u8; 1] = [0x01];
+
+    // 4 dummy line per gate.
+    // Document uses 0x1B, but demo uses 0x1A
+    pub const SET_DUMMY_LINE_PERIOD: [u8; 1] = [0x1A];
+
+    // Document uses 0x0B, but demo uses 0x08
+    pub const SET_GATE_TIME: [u8; 1] = [0x08];
+
+    // Demo doesn't use this command.
+    pub const BORDER_WAVEFORM_CONTROL: [u8; 1] = [0x01];
+}
+
 #[repr(u8)]
 #[derive(Copy, Clone, Debug)]
 pub enum DeepSleep {
@@ -44,20 +74,44 @@ impl Default for DeepSleep {
     }
 }
 
-pub(crate) mod display_update {
-    pub const ENABLE_CLOCK_SIGNAL: u8 = 0b1000_0000; // 0x80
-    pub const ENABLE_CLOCK_SIGNAL_ENABLE_CP: u8 = 0b1100_0000; // demo uses 0c11000000
+#[repr(u8)]
+#[derive(Copy, Clone, Debug)]
+pub enum DisplayUpdateEnablingStep {
+    ClockSignal = 0b1000_0000,
+    ClockSignalThenCp = 0b1100_0000,
+}
 
-    pub const TO_INITIAL_DISPLAY: u8 = 0b0000_1000; // 0x08
-    pub const TO_PATTERN_DISPLAY: u8 = 0b0000_0100; // 0x04
-                                                    // demo uses 0c00000100
-    pub const TO_BOTH_DISPLAY: u8 = TO_INITIAL_DISPLAY | TO_PATTERN_DISPLAY;
+impl Default for DisplayUpdateEnablingStep {
+    fn default() -> Self {
+        Self::ClockSignalThenCp
+    }
+}
 
-    pub const DISABLE_CP_DISABLE_CLOCK_SIGNAL: u8 = 0b0000_0011; // 0x03
-                                                                 // demo uses 0c00000011
-    pub const DISABLE_CLOCK_SIGNAL: u8 = 0b0000_0001; // 0x01
+#[repr(u8)]
+#[derive(Copy, Clone, Debug)]
+pub enum DisplayUpdateTarget {
+    Initial = 0b0000_1000,
+    Pattern = 0b0000_0100,
+    Both = 0b0000_1100,
+}
 
-    pub const DEMO_USES: u8 = 0b11000111; // 0xC7 total demo uses
+impl Default for DisplayUpdateTarget {
+    fn default() -> Self {
+        Self::Pattern
+    }
+}
+
+#[repr(u8)]
+#[derive(Copy, Clone, Debug)]
+pub enum DisplayUpdateDisablingStep {
+    CpThenClockSignal = 0b0000_0011,
+    ClockSignal = 0b0000_0001,
+}
+
+impl Default for DisplayUpdateDisablingStep {
+    fn default() -> Self {
+        Self::CpThenClockSignal
+    }
 }
 
 const LUT_FULL_UPDATE: [u8; 30] = [
@@ -110,37 +164,4 @@ impl Default for DataEntryAddressCounterDirection {
     fn default() -> Self {
         Self::X
     }
-}
-
-pub(crate) mod data {
-    use crate::epd::display_update;
-
-    // P21
-    // pub static ref BoosterSoftStartControl: Vec<u8> = vec![0xCF, 0xCE, 0x8D];
-    // from sample
-    pub const BOOSTER_SOFT_START_CONTROL: [u8; 3] = [0xD7, 0xD6, 0x9D];
-    pub const GATE_SCAN_START_POSITION: [u8; 1] = [0x01];
-
-    // P22
-    pub const TEMPERATURE_SENSOR_CONTROL: [u8; 2] = [0b01111111, 0b11110000];
-
-    // Demo doesn't use this command.
-    pub const DISPLAY_UPDATE_CONTROL_1: [u8; 0] = [];
-
-    // P23
-    pub const DISPLAY_UPDATE_CONTROL_2: [u8; 1] = [display_update::DEMO_USES];
-    pub const WRITE_VCOM_REGISTER: [u8; 1] = [0xA8]; // demo uses
-
-    // P24
-    pub const WRITE_LUT_REGISTER: [u8; 1] = [0x01];
-
-    // 4 dummy line per gate.
-    // Document uses 0x1B, but demo uses 0x1A
-    pub const SET_DUMMY_LINE_PERIOD: [u8; 1] = [0x1A];
-
-    // Document uses 0x0B, but demo uses 0x08
-    pub const SET_GATE_TIME: [u8; 1] = [0x08];
-
-    // Demo doesn't use this command.
-    pub const BORDER_WAVEFORM_CONTROL: [u8; 1] = [0x01];
 }
