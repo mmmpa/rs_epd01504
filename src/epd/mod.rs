@@ -209,7 +209,7 @@ pub trait EpdSpiWrapper: Send + Sync + 'static {
         self.write_vcom_register().await?;
         self.set_dummy_line_period().await?;
         self.set_gate_time().await?;
-        self.set_data_entry_mode().await?;
+        self.set_data_entry_mode(DataEntryMode::default()).await?;
         self.set_lut(Lut::FullUpdate).await?;
 
         Ok(())
@@ -267,13 +267,10 @@ pub trait EpdSpiWrapper: Send + Sync + 'static {
         self.send(Command::SetGateTime, &data::SET_GATE_TIME).await
     }
 
-    async fn set_data_entry_mode(&self) -> EpdResult<()> {
+    async fn set_data_entry_mode(&self, mode: DataEntryMode) -> EpdResult<()> {
         debug!("set_data_entry_mode");
-        self.send(
-            Command::DataEntryModeSetting,
-            &vec![data_entry_mode::Y_INC_X_INC],
-        )
-        .await
+        self.send(Command::DataEntryModeSetting, &vec![mode as u8])
+            .await
     }
 
     async fn set_lut(&self, lut: Lut) -> EpdResult<()> {

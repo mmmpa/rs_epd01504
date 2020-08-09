@@ -30,9 +30,17 @@ pub enum Command {
     NOP = 0xFF,
 }
 
+#[repr(u8)]
+#[derive(Copy, Clone, Debug)]
 pub enum DeepSleep {
-    NORMAL = 0x00,
-    ENTER_DEEP_SLEEP = 0x01,
+    Normal = 0x00,
+    EnterDeepSleep = 0x01,
+}
+
+impl Default for DeepSleep {
+    fn default() -> Self {
+        Self::Normal
+    }
 }
 
 pub(crate) mod display_update {
@@ -51,15 +59,16 @@ pub(crate) mod display_update {
     pub const DEMO_USES: u8 = 0xC7; // total demo uses
 }
 
-const FULL_UPDATE: [u8; 30] = [
+const LUT_FULL_UPDATE: [u8; 30] = [
     0x66, 0x66, 0x44, 0x66, 0xAA, 0x11, 0x80, 0x08, 0x11, 0x18, 0x81, 0x18, 0x11, 0x88, 0x11, 0x88,
     0x11, 0x88, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0x5F, 0xAF, 0xFF, 0xFF, 0x2F, 0x00,
 ];
-const PARTIAL_UPDATE: [u8; 30] = [
+const LUT_PARTIAL_UPDATE: [u8; 30] = [
     0x10, 0x18, 0x18, 0x28, 0x18, 0x18, 0x18, 0x18, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x13, 0x11, 0x22, 0x63, 0x11, 0x00, 0x00, 0x00, 0x00, 0x00,
 ];
 
+#[derive(Copy, Clone, Debug)]
 pub enum Lut {
     FullUpdate,
     PartialUpdate,
@@ -68,21 +77,28 @@ pub enum Lut {
 impl AsRef<[u8]> for Lut {
     fn as_ref(&self) -> &[u8] {
         match self {
-            Lut::FullUpdate => &FULL_UPDATE,
-            Lut::PartialUpdate => &PARTIAL_UPDATE,
+            Lut::FullUpdate => &LUT_FULL_UPDATE,
+            Lut::PartialUpdate => &LUT_PARTIAL_UPDATE,
         }
     }
 }
 
-pub(crate) mod data_entry_mode {
-    pub const Y_DEC_X_DEC: u8 = 0x00;
-    pub const Y_DEC_X_INC: u8 = 0x01;
-    pub const Y_INC_X_DEC: u8 = 0x02;
-    pub const Y_INC_X_INC: u8 = 0x03; // [POR]
+#[repr(u8)]
+#[derive(Copy, Clone, Debug)]
+pub enum DataEntryMode {
+    YdecXdec = 0x00,
+    YdecXinc = 0x01,
+    YincXdec = 0x02,
+    YincXinc = 0x03,
+}
+
+impl Default for DataEntryMode {
+    fn default() -> Self {
+        Self::YincXinc
+    }
 }
 
 pub(crate) mod data {
-    use crate::epd::data_entry_mode;
     use crate::epd::display_update;
 
     // P21
@@ -90,7 +106,6 @@ pub(crate) mod data {
     // from sample
     pub const BOOSTER_SOFT_START_CONTROL: [u8; 3] = [0xD7, 0xD6, 0x9D];
     pub const GATE_SCAN_START_POSITION: [u8; 1] = [0x01];
-    pub const DATA_ENTRY_MODE_SETTING_YD_XD: [u8; 1] = [data_entry_mode::Y_INC_X_INC];
 
     // P22
     pub const TEMPERATURE_SENSOR_CONTROL: [u8; 2] = [0b01111111, 0b11110000];
