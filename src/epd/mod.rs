@@ -18,14 +18,14 @@ pub type EpdResult<T> = Result<T, EpdError>;
 #[repr(u8)]
 #[derive(Eq, PartialEq, Copy, Clone)]
 pub enum Color {
-    Black = 1,
-    White = 0,
+    Black = 0,
+    White = 1,
 }
 
 impl From<u8> for Color {
     fn from(n: u8) -> Self {
         match n {
-            1 => Self::Black,
+            0 => Self::Black,
             _ => Self::White,
         }
     }
@@ -252,8 +252,8 @@ pub trait EpdCommand: Send + Sync {
 
     async fn fill(&self, color: Color, params: DisplayUpdateControlParams) -> EpdResult<()> {
         let hex = match color {
-            Color::Black => 0xFF,
-            Color::White => 0x00,
+            Color::Black => 0x00,
+            Color::White => 0xFF,
         };
 
         let w = self.canvas_width() >> 3;
@@ -273,8 +273,32 @@ pub trait EpdCommand: Send + Sync {
         data: &[u8],
         params: DisplayUpdateControlParams,
     ) -> EpdResult<()> {
+        #[cfg(feature = "log_redering_time")]
+        let start_time = std::time::SystemTime::now();
+
         self.upload_image(rect, data).await?;
+
+        #[cfg(feature = "log_redering_time")]
+        let uploading = std::time::SystemTime::now()
+            .duration_since(start_time)
+            .unwrap()
+            .as_millis();
+
         self.refresh_display(params).await?;
+
+        #[cfg(feature = "log_redering_time")]
+        {
+            let whole = std::time::SystemTime::now()
+                .duration_since(start_time)
+                .unwrap()
+                .as_millis();
+            info!(
+                "upload: {upload_time:}ms + refresh: {refresh_time:}ms = rendering: {whole_time}ms",
+                upload_time = uploading,
+                refresh_time = whole - uploading,
+                whole_time = whole,
+            );
+        }
 
         Ok(())
     }
@@ -409,7 +433,9 @@ pub trait Epd: Send + Sync {
     }
 
     async fn clear(&self) -> EpdResult<()> {
-        self.fill(Color::White).await
+        self.fill(Color::White).await?;
+        self.fill(Color::White).await?;
+        Ok(())
     }
 
     async fn sleep(&self, mode: DeepSleep) -> EpdResult<()> {
