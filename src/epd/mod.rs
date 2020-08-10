@@ -13,22 +13,14 @@ use std::io::Read;
 
 pub type EpdResult<T> = Result<T, EpdError>;
 
-//pub struct Epd;
+pub const RESET_TIME: u64 = 200;
+pub const BUSY_WAIT_DELAY: u64 = 50;
 
 #[repr(u8)]
 #[derive(Eq, PartialEq, Copy, Clone)]
 pub enum Color {
     Black = 0,
     White = 1,
-}
-
-impl From<u8> for Color {
-    fn from(n: u8) -> Self {
-        match n {
-            0 => Self::Black,
-            _ => Self::White,
-        }
-    }
 }
 
 #[derive(Debug, Default, Copy, Clone, Eq, PartialEq)]
@@ -58,54 +50,37 @@ pub struct DisplayUpdateControlParams {
 }
 
 #[async_trait]
-pub trait Spi: Send + Sync {
-    type GpioWriter: GpioWriter;
+pub trait Epd: Send + Sync {
+    type EpdCore: EpdCommand;
 
-    fn data_command_pin(&self) -> &Self::GpioWriter;
-    async fn send(&self, data: &[u8]) -> EpdResult<()>;
+    fn core(&self) -> &Self::EpdCore;
 
-    async fn send_command(&self, command: u8) -> EpdResult<()> {
-        self.data_command_pin().low().await?;
-        self.send(&[command]).await?;
+    fn display_update_control(&self) -> DisplayUpdateControlParams {
+        DisplayUpdateControlParams::default()
+    }
 
+    async fn init(&self) -> EpdResult<()> {
+        self.core().init().await
+    }
+
+    async fn draw(&self, rect: &EightSizedRectangle, data: &[u8]) -> EpdResult<()> {
+        self.core()
+            .draw(rect, data, self.display_update_control())
+            .await
+    }
+
+    async fn fill(&self, color: Color) -> EpdResult<()> {
+        self.core().fill(color, self.display_update_control()).await
+    }
+
+    async fn clear(&self) -> EpdResult<()> {
+        self.fill(Color::White).await?;
+        self.fill(Color::White).await?;
         Ok(())
     }
 
-    async fn send_data(&self, data: &[u8]) -> EpdResult<()> {
-        if data.len() == 0 {
-            return Ok(());
-        }
-
-        self.data_command_pin().high().await?;
-
-        // Buf limit is machine unique. cat /sys/module/spidev/parameters/bufsiz
-        for d in data.chunks(4096).into_iter() {
-            self.send(d).await?;
-        }
-
-        Ok(())
-    }
-}
-
-#[async_trait]
-pub trait GpioWriter: Send + Sync {
-    async fn write(&self, value: u8) -> EpdResult<()>;
-    async fn high(&self) -> EpdResult<()> {
-        self.write(1).await
-    }
-    async fn low(&self) -> EpdResult<()> {
-        self.write(0).await
-    }
-}
-
-#[async_trait]
-pub trait GpioReader: Send + Sync {
-    async fn read(&self) -> EpdResult<u8>;
-    async fn high(&self) -> EpdResult<bool> {
-        Ok(!self.low().await?)
-    }
-    async fn low(&self) -> EpdResult<bool> {
-        Ok(self.read().await? == 0)
+    async fn sleep(&self, mode: DeepSleep) -> EpdResult<()> {
+        self.core().sleep(mode).await
     }
 }
 
@@ -122,13 +97,9 @@ pub trait EpdCommand: Send + Sync {
     fn busy_pin(&self) -> &Self::GpioReader;
     fn spi(&self) -> &Self::Spi;
 
-    fn canvas_width(&self) -> usize {
-        200
-    }
+    fn canvas_width(&self) -> usize;
 
-    fn canvas_height(&self) -> usize {
-        200
-    }
+    fn canvas_height(&self) -> usize;
 
     async fn send_command(&self, commend: Command) -> EpdResult<()> {
         self.spi().send_command(commend as u8).await?;
@@ -144,7 +115,7 @@ pub trait EpdCommand: Send + Sync {
                 data.iter()
                     .map(|x| format!("{:>02x}", x))
                     .collect::<Vec<_>>()
-                    .join(",")
+                    .join(", ")
             );
         } else {
             debug!("commend: {:x} data: snip", commend as u8,);
@@ -161,8 +132,9 @@ pub trait EpdCommand: Send + Sync {
         self.set_driver_output_control().await?;
         self.set_booster_soft_start_control().await?;
         self.write_vcom_register().await?;
-        self.set_dummy_line_period().await?;
-        self.set_gate_time().await?;
+        self.set_dummy_line_period(static_data::SET_DUMMY_LINE_PERIOD)
+            .await?;
+        self.set_gate_time(static_data::SET_GATE_TIME).await?;
         self.set_data_entry_mode(
             DataEntryAddressDirection::default(),
             DataEntryAddressCounterDirection::default(),
@@ -174,6 +146,7 @@ pub trait EpdCommand: Send + Sync {
     }
 
     async fn init_all_pin(&self) -> EpdResult<()> {
+        debug!("init_all_pin");
         self.reset_pin().high().await?;
         self.chip_select_pin().high().await?;
 
@@ -181,6 +154,7 @@ pub trait EpdCommand: Send + Sync {
     }
 
     async fn reset_panel(&self) -> EpdResult<()> {
+        debug!("reset_panel");
         self.reset_pin().low().await?;
         delay_for(RESET_TIME).await;
         self.reset_pin().high().await?;
@@ -210,26 +184,18 @@ pub trait EpdCommand: Send + Sync {
 
     async fn write_vcom_register(&self) -> EpdResult<()> {
         debug!("write_vcom_register");
-        self.send(
-            Command::WriteVcomRegister,
-            &static_data::WRITE_VCOM_REGISTER,
-        )
-        .await
-    }
-
-    async fn set_dummy_line_period(&self) -> EpdResult<()> {
-        debug!("set_dummy_line_period");
-        self.send(
-            Command::SetDummyLinePeriod,
-            &static_data::SET_DUMMY_LINE_PERIOD,
-        )
-        .await
-    }
-
-    async fn set_gate_time(&self) -> EpdResult<()> {
-        debug!("set_gate_time");
-        self.send(Command::SetGateTime, &static_data::SET_GATE_TIME)
+        self.send(Command::WriteVcomRegister, &[static_data::VCOM])
             .await
+    }
+
+    async fn set_dummy_line_period(&self, period: u8) -> EpdResult<()> {
+        debug!("set_dummy_line_period");
+        self.send(Command::SetDummyLinePeriod, &[period]).await
+    }
+
+    async fn set_gate_time(&self, time: u8) -> EpdResult<()> {
+        debug!("set_gate_time");
+        self.send(Command::SetGateTime, &[time]).await
     }
 
     async fn set_data_entry_mode(
@@ -248,6 +214,21 @@ pub trait EpdCommand: Send + Sync {
     async fn set_lut(&self, lut: Lut) -> EpdResult<()> {
         debug!("set_full_update_lut");
         self.send(Command::WriteLutRegister, lut.as_ref()).await
+    }
+
+    async fn border_waveform_control(
+        &self,
+        waveform: BorderWaveFormControlFollowSource,
+        setting: BorderWaveFormControlSelectGsOrFix,
+        fix_level: BorderWaveFormControlFixLevelSetting,
+        gs_transition: BorderWaveFormControlGsTransitionSetting,
+    ) -> EpdResult<()> {
+        debug!("border_waveform_control");
+        self.send(
+            Command::BorderWaveformControl,
+            &[waveform as u8 | setting as u8 | fix_level as u8 | gs_transition as u8],
+        )
+        .await
     }
 
     async fn fill(&self, color: Color, params: DisplayUpdateControlParams) -> EpdResult<()> {
@@ -395,7 +376,7 @@ pub trait EpdCommand: Send + Sync {
 
     async fn wait_until_idle(&self) -> EpdResult<()> {
         loop {
-            delay_for(100).await;
+            delay_for(BUSY_WAIT_DELAY).await;
             if self.busy_pin().low().await? {
                 break;
             }
@@ -409,36 +390,53 @@ pub trait EpdCommand: Send + Sync {
 }
 
 #[async_trait]
-pub trait Epd: Send + Sync {
-    type EpdCore: EpdCommand;
+pub trait Spi: Send + Sync {
+    type GpioWriter: GpioWriter;
 
-    fn core(&self) -> &Self::EpdCore;
+    fn data_command_pin(&self) -> &Self::GpioWriter;
+    async fn send(&self, data: &[u8]) -> EpdResult<()>;
 
-    fn display_update_control(&self) -> DisplayUpdateControlParams {
-        DisplayUpdateControlParams::default()
-    }
+    async fn send_command(&self, command: u8) -> EpdResult<()> {
+        self.data_command_pin().low().await?;
+        self.send(&[command]).await?;
 
-    async fn init(&self) -> EpdResult<()> {
-        self.core().init().await
-    }
-
-    async fn draw(&self, rect: &EightSizedRectangle, data: &[u8]) -> EpdResult<()> {
-        self.core()
-            .draw(rect, data, self.display_update_control())
-            .await
-    }
-
-    async fn fill(&self, color: Color) -> EpdResult<()> {
-        self.core().fill(color, self.display_update_control()).await
-    }
-
-    async fn clear(&self) -> EpdResult<()> {
-        self.fill(Color::White).await?;
-        self.fill(Color::White).await?;
         Ok(())
     }
 
-    async fn sleep(&self, mode: DeepSleep) -> EpdResult<()> {
-        self.core().sleep(mode).await
+    async fn send_data(&self, data: &[u8]) -> EpdResult<()> {
+        if data.len() == 0 {
+            return Ok(());
+        }
+
+        self.data_command_pin().high().await?;
+
+        // Buf limit is machine unique. cat /sys/module/spidev/parameters/bufsiz
+        for d in data.chunks(4096).into_iter() {
+            self.send(d).await?;
+        }
+
+        Ok(())
+    }
+}
+
+#[async_trait]
+pub trait GpioWriter: Send + Sync {
+    async fn write(&self, value: u8) -> EpdResult<()>;
+    async fn high(&self) -> EpdResult<()> {
+        self.write(1).await
+    }
+    async fn low(&self) -> EpdResult<()> {
+        self.write(0).await
+    }
+}
+
+#[async_trait]
+pub trait GpioReader: Send + Sync {
+    async fn read(&self) -> EpdResult<u8>;
+    async fn high(&self) -> EpdResult<bool> {
+        Ok(!self.low().await?)
+    }
+    async fn low(&self) -> EpdResult<bool> {
+        Ok(self.read().await? == 0)
     }
 }

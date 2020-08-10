@@ -1,7 +1,5 @@
 /// official manual: http://www.e-paper-display.com/downloadRepository/bcd47ebb-5bb9-4fb8-8a59-f90a6d9de473.pdf
 
-pub(crate) const RESET_TIME: u64 = 200;
-
 #[repr(u8)]
 #[derive(Copy, Clone, Debug)]
 pub enum Command {
@@ -36,7 +34,6 @@ pub(crate) mod static_data {
     // pub static ref BoosterSoftStartControl: Vec<u8> = vec![0xCF, 0xCE, 0x8D];
     // from sample
     pub const BOOSTER_SOFT_START_CONTROL: [u8; 3] = [0xD7, 0xD6, 0x9D];
-    pub const GATE_SCAN_START_POSITION: [u8; 1] = [0x01];
 
     // P22
     pub const TEMPERATURE_SENSOR_CONTROL: [u8; 2] = [0b01111111, 0b11110000];
@@ -45,20 +42,14 @@ pub(crate) mod static_data {
     pub const DISPLAY_UPDATE_CONTROL_1: [u8; 0] = [];
 
     // P23
-    pub const WRITE_VCOM_REGISTER: [u8; 1] = [0xA8]; // demo uses
-
-    // P24
-    pub const WRITE_LUT_REGISTER: [u8; 1] = [0x01];
+    pub const VCOM: u8 = 0xA8; // demo uses
 
     // 4 dummy line per gate.
     // Document uses 0x1B, but demo uses 0x1A
-    pub const SET_DUMMY_LINE_PERIOD: [u8; 1] = [0x1A];
+    pub const SET_DUMMY_LINE_PERIOD: u8 = 0x1A;
 
     // Document uses 0x0B, but demo uses 0x08
-    pub const SET_GATE_TIME: [u8; 1] = [0x08];
-
-    // Demo doesn't use this command.
-    pub const BORDER_WAVEFORM_CONTROL: [u8; 1] = [0x01];
+    pub const SET_GATE_TIME: u8 = 0x08;
 }
 
 #[repr(u8)]
@@ -118,6 +109,7 @@ const LUT_FULL_UPDATE: [u8; 30] = [
     0x66, 0x66, 0x44, 0x66, 0xAA, 0x11, 0x80, 0x08, 0x11, 0x18, 0x81, 0x18, 0x11, 0x88, 0x11, 0x88,
     0x11, 0x88, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0x5F, 0xAF, 0xFF, 0xFF, 0x2F, 0x00,
 ];
+
 const LUT_PARTIAL_UPDATE: [u8; 30] = [
     0x10, 0x18, 0x18, 0x28, 0x18, 0x18, 0x18, 0x18, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x13, 0x11, 0x22, 0x63, 0x11, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -163,5 +155,57 @@ pub enum DataEntryAddressCounterDirection {
 impl Default for DataEntryAddressCounterDirection {
     fn default() -> Self {
         Self::X
+    }
+}
+
+#[repr(u8)]
+#[derive(Copy, Clone, Debug)]
+pub enum BorderWaveFormControlFollowSource {
+    AtInitialUpdateDisplay = 0b0_0000000,
+    AtInitialUpdateDisplayForVbd = 0b1_0000000,
+}
+
+impl Default for BorderWaveFormControlFollowSource {
+    fn default() -> Self {
+        Self::AtInitialUpdateDisplay
+    }
+}
+
+#[repr(u8)]
+#[derive(Copy, Clone, Debug)]
+pub enum BorderWaveFormControlSelectGsOrFix {
+    GsTransition = 0b0_0_000000,
+    FixLevelSetting = 0b0_1_000000,
+}
+
+impl Default for BorderWaveFormControlSelectGsOrFix {
+    fn default() -> Self {
+        Self::FixLevelSetting
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub enum BorderWaveFormControlFixLevelSetting {
+    Vss = 0b00_00_0000,
+    Vsh = 0b00_01_0000,
+    Vsl = 0b00_10_0000,
+    Hiz = 0b00_11_0000,
+}
+
+impl Default for BorderWaveFormControlFixLevelSetting {
+    fn default() -> Self {
+        Self::Hiz
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub enum BorderWaveFormControlGsTransitionSetting {
+    Gs0Gs1 = 0b000000_01,
+    Gs1Gs0 = 0b000000_10,
+}
+
+impl Default for BorderWaveFormControlGsTransitionSetting {
+    fn default() -> Self {
+        Self::Gs0Gs1
     }
 }

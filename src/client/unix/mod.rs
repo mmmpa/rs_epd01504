@@ -25,6 +25,8 @@ pub struct EpdCoreClient {
     pub chip_select_pin: GpioWriterClient,
     pub reset_pin: GpioWriterClient,
     pub busy_pin: GpioReaderClient,
+    pub width: usize,
+    pub height: usize,
 }
 
 impl EpdCommand for EpdCoreClient {
@@ -46,6 +48,14 @@ impl EpdCommand for EpdCoreClient {
 
     fn spi(&self) -> &Self::Spi {
         &self.raw_spi
+    }
+
+    fn canvas_width(&self) -> usize {
+        self.width
+    }
+
+    fn canvas_height(&self) -> usize {
+        self.height
     }
 }
 
